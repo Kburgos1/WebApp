@@ -1,30 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './CreateEvent.css';
-import React, { useState } from "react";
-import { API, graphqlOperation } from "aws-amplify";
-import { createEvent } from "./graphql/mutations";
+import amplifyConfig from "../amplify_outputs.json"; // Import amplify-output.json
 
-  mutation CreateEvent($input: CreateEventInput!) {
-    createEvent(input: $input) {
-      id
-      title
-      description
-      address
-      startDatetime
-    }
-  }
-;
 function CreateEvent() {
   const navigate = useNavigate();
-  
-  // State to store form values
+
   const [eventName, setEventName] = useState('');
   const [startDateTime, setStartDateTime] = useState('');
   const [endDateTime, setEndDateTime] = useState('');
   const [location, setLocation] = useState('');
   const [host, setHost] = useState('');
   const [guests, setGuests] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!localStorage.getItem('authenticated')) {
@@ -33,28 +22,61 @@ function CreateEvent() {
     }
   }, [navigate]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    // Here you can add the logic to save the event data (e.g., send it to an API or store it in localStorage)
+    setLoading(true);
+    setError(null);
+
     const newEvent = {
-      eventName,
-      startDateTime,
-      endDateTime,
+      title: eventName,
+      description: `Hosted by ${host}`,
       address: location,
-      hostname: host,
-      guests: guests.split(',').map((guest, index) => ({
-        id: index,
-        name: guest.trim() // Remove leading/trailing spaces
-      })),
+      startDatetime: '2024-12-03T12:00:00Z',
     };
 
-    // Save the newly created event to localStorage
-    const existingEvents = JSON.parse(localStorage.getItem('createdEvents')) || [];
-    const updatedEvents = [...existingEvents, newEvent];
-    localStorage.setItem('createdEvents', JSON.stringify(updatedEvents));
-    
-    alert('Event created successfully!');
-    navigate('/home'); // Redirect to home page or another page after event creation
+    // GraphQL Mutation
+    const mutation = `
+      mutation CreateEvent($input: CreateEventInput!) {
+        createEvent(input: $input) {
+          id
+          title
+          description
+          address
+          startDatetime
+        }
+      }
+    `;
+
+    try {
+      const response = await fetch(amplifyConfig.data.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': amplifyConfig.data.api_key,
+        },
+        body: JSON.stringify({
+          query: mutation,
+          variables: { input: newEvent },
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.errors) {
+        console.error("Error creating event:", result.errors);
+        setError("Failed to create the event. Please try again.");
+        return;
+      }
+
+      console.log("Event created successfully:", result.data.createEvent);
+      alert('Event created successfully!');
+      navigate('/home'); // Redirect to home page
+    } catch (err) {
+      console.error("Error creating event:", err);
+      setError("An unexpected error occurred.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -70,7 +92,7 @@ function CreateEvent() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label>Start Date and Time:</label>
           <input
@@ -80,7 +102,7 @@ function CreateEvent() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label>End Date and Time:</label>
           <input
@@ -90,7 +112,7 @@ function CreateEvent() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label>Location:</label>
           <input
@@ -100,7 +122,7 @@ function CreateEvent() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label>Host:</label>
           <input
@@ -110,7 +132,7 @@ function CreateEvent() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label>Guests (separate with commas):</label>
           <input
@@ -119,11 +141,15 @@ function CreateEvent() {
             onChange={(e) => setGuests(e.target.value)}
           />
         </div>
-        
-        <button type="submit">Create Event</button>
+
+        <button type="submit" disabled={loading}>
+          {loading ? "Creating..." : "Create Event"}
+        </button>
       </form>
+
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );
 }
-export const createEvent = /* GraphQL */ 
-//export default CreateEvent;
+
+export default CreateEvent;
